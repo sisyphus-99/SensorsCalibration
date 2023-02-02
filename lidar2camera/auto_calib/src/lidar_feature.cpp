@@ -34,11 +34,7 @@ void LidarFeature::extract_feature(
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZI>);
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_pole(
-      new pcl::PointCloud<pcl::PointXYZI>);
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_lane(
-      new pcl::PointCloud<pcl::PointXYZI>);
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_car(
       new pcl::PointCloud<pcl::PointXYZI>);
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_filtered(
       new pcl::PointCloud<pcl::PointXYZI>);
@@ -84,21 +80,15 @@ void LidarFeature::extract_feature(
   cloud_filtered->height = 1;
   cloud_filtered->width = cloud_size;
 
-  // extract lane, car, pole,
-  extract_objects(cloud_filtered, cloud_pole, cloud_lane, cloud_car,
-                  trans_cloud_lane);
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_lane_pole(
-      new pcl::PointCloud<pcl::PointXYZI>);
-  *cloud_lane_pole = *cloud_pole + *cloud_lane;
+  // extract lane
+  extract_objects(cloud_filtered, cloud_lane, trans_cloud_lane);
 
-  *register_cloud = *cloud_lane_pole;
+  *register_cloud = *cloud_lane;
 }
 
 void LidarFeature::extract_objects(
     pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud,
-    pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud_pole,
     pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud_lane,
-    pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud_car,
     pcl::PointCloud<pcl::PointXYZI>::Ptr &trans_cloud_lane) {
 
   pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
@@ -177,51 +167,6 @@ void LidarFeature::extract_objects(
   plane_model(trans_target_lidar, lidar_ground_cloud_tmp, left_plane_tmp_plane);
   double left_offset_z = left_plane_tmp_plane[3];
   left_rot_tmp(2, 3) = left_offset_z;
-
-  // get pole
-  double delta_x = 0.7;
-  double delta_y = 0.7;
-  struct PointGrid {
-    PointGrid() = default;
-    float max = -100;
-    float min = 100;
-    float avg = 0;
-    std::vector<pcl::PointXYZI> points;
-  };
-  std::vector<std::vector<PointGrid>> pointGrid;
-  for (int i = 0; i < ((x_max_threshold_ - x_min_threshold_) / delta_x + 1);
-       i++) {
-    pointGrid.emplace_back((y_max_threshold_ - y_min_threshold_) / delta_y + 1);
-  }
-
-  for (auto &point : *cloud_f) {
-    if (point.x >= x_min_threshold_ && point.x < x_max_threshold_ &&
-        (point.y >= y_min_threshold_ && point.y < y_max_threshold_)) {
-      int xx = floor((point.x - x_min_threshold_) / delta_x);
-      int yy = floor((point.y - y_min_threshold_) / delta_y);
-      if (pointGrid[xx][yy].max < point.z)
-        pointGrid[xx][yy].max = point.z;
-      if (pointGrid[xx][yy].min > point.z)
-        pointGrid[xx][yy].min = point.z;
-      pointGrid[xx][yy].avg += point.z;
-      pointGrid[xx][yy].points.push_back(point);
-    }
-  }
-
-  double elevation_min = -2;
-  double elevation_max = 4;
-
-  for (unsigned long i = 0; i < pointGrid.size(); i++) {
-    for (unsigned long j = 0; j < pointGrid[0].size(); j++) {
-      if (pointGrid[i][j].max > elevation_max) {
-        for (auto &point : pointGrid[i][j].points) {
-          if (point.z > elevation_min) {
-            cloud_pole->push_back(point);
-          }
-        }
-      }
-    }
-  }
 }
 
 void LidarFeature::plane_model(
